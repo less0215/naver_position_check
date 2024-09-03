@@ -18,9 +18,9 @@ import base64
 
 # Naver API 관련 함수 및 설정
 BASE_URL = 'https://api.naver.com'
-API_KEY = '010000000094450d1dd02d9f94675fb0c3b77ee5d03ef32f1f0b956eae9cb19851dcb59d5b'
-SECRET_KEY = 'AQAAAACURQ0d0C2flGdfsMO3fuXQj9OGFEyr4CjF7kcsHnhtOg=='
-CUSTOMER_ID = '1943381'
+API_KEY = 'api_key'
+SECRET_KEY = 'SECRET_KEY'
+CUSTOMER_ID = 'CUSTOMER_ID'
 
 class Signature:
     @staticmethod
