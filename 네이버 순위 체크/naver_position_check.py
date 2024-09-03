@@ -2,6 +2,7 @@ import streamlit as st
 import time
 import random
 import pandas as pd
+import requests
 from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -11,9 +12,55 @@ from selenium.webdriver.support import expected_conditions as EC
 from io import BytesIO
 from openpyxl import Workbook
 from openpyxl.styles import PatternFill
+import hashlib
+import hmac
+import base64
+
+# Naver API 관련 함수 및 설정
+BASE_URL = 'https://api.naver.com'
+API_KEY = '010000000094450d1dd02d9f94675fb0c3b77ee5d03ef32f1f0b956eae9cb19851dcb59d5b'
+SECRET_KEY = 'AQAAAACURQ0d0C2flGdfsMO3fuXQj9OGFEyr4CjF7kcsHnhtOg=='
+CUSTOMER_ID = '1943381'
+
+class Signature:
+    @staticmethod
+    def generate(timestamp, method, uri, secret_key):
+        message = "{}.{}.{}".format(timestamp, method, uri)
+        hash = hmac.new(bytes(secret_key, "utf-8"), bytes(message, "utf-8"), hashlib.sha256)
+        
+        hash.hexdigest()
+        return base64.b64encode(hash.digest())
+
+def get_header(method, uri, api_key, secret_key, customer_id):
+    timestamp = str(round(time.time() * 1000))
+    signature = Signature.generate(timestamp, method, uri, secret_key)
+    
+    return {
+        'Content-Type': 'application/json; charset=UTF-8',
+        'X-Timestamp': timestamp,
+        'X-API-KEY': api_key,
+        'X-Customer': str(customer_id),
+        'X-Signature': signature
+    }
+
+def get_search_volume(keyword):
+    uri = '/keywordstool'
+    method = 'GET'
+    params = {'hintKeywords': keyword, 'showDetail': '1'}
+    
+    r = requests.get(BASE_URL + uri, params=params, 
+                     headers=get_header(method, uri, API_KEY, SECRET_KEY, CUSTOMER_ID))
+    
+    data = r.json()['keywordList']
+    result = next((item for item in data if item['relKeyword'] == keyword), None)
+    
+    if result:
+        return result['monthlyPcQcCnt'], result['monthlyMobileQcCnt']
+    else:
+        return 0, 0
 
 # Streamlit 앱 제목
-st.title("네이버 순위 체크")
+st.title("네이버 순위 체크 및 검색량 조회")
 
 # 팀 선택
 selected_team = st.selectbox("팀 선택", ["청소년팀", "형사팀"])
@@ -38,10 +85,12 @@ def color_keyword(val, keyword_types, keyword):
         return 'background-color: #90EE90'  # 밝은 초록색
     elif keyword_type == 'smartblock':
         return 'background-color: #ADD8E6'  # 밝은 파란색
+    elif keyword_type == 'both':
+        return 'background-color: #FFB3BA'  # 밝은 빨간색
     return ''
 
 # 엑셀 파일 생성 함수
-def create_excel(df, keyword_types):
+def create_excel(df, keyword_types, smartblock_keywords):
     output = BytesIO()
     workbook = Workbook()
     sheet = workbook.active
@@ -61,25 +110,34 @@ def create_excel(df, keyword_types):
                     cell.fill = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid")
                 elif keyword_type == 'smartblock':
                     cell.fill = PatternFill(start_color="ADD8E6", end_color="ADD8E6", fill_type="solid")
+                elif keyword_type == 'both':
+                    cell.fill = PatternFill(start_color="FFB3BA", end_color="FFB3BA", fill_type="solid")
+
+    # 스마트블럭 키워드 및 연관 키워드 추가
+    sheet = workbook.create_sheet(title="스마트블럭 키워드")
+    sheet.append(["스마트블럭 키워드", "연관 키워드"])
+    for keyword, related_keywords in smartblock_keywords.items():
+        sheet.append([keyword, ", ".join(related_keywords)])
 
     # 열 너비 자동 조정
-    for column in sheet.columns:
-        max_length = 0
-        column = [cell for cell in column]
-        for cell in column:
-            try:
-                if len(str(cell.value)) > max_length:
-                    max_length = len(cell.value)
-            except:
-                pass
-        adjusted_width = (max_length + 2)
-        sheet.column_dimensions[column[0].column_letter].width = adjusted_width
+    for sheet in workbook.worksheets:
+        for column in sheet.columns:
+            max_length = 0
+            column = [cell for cell in column]
+            for cell in column:
+                try:
+                    if len(str(cell.value)) > max_length:
+                        max_length = len(cell.value)
+                except:
+                    pass
+            adjusted_width = (max_length + 2)
+            sheet.column_dimensions[column[0].column_letter].width = adjusted_width
 
     workbook.save(output)
     return output.getvalue()
 
-# 검색 시작 버튼
-if st.button("검색 시작"):
+# 순위 확인 버튼
+if st.button("순위 확인"):
     if not keywords:
         st.error("키워드를 입력해주세요.")
     else:
@@ -99,6 +157,7 @@ if st.button("검색 시작"):
             # 결과를 저장할 리스트 초기화
             results_list = []
             keyword_types = {}  # 키워드 유형을 저장할 딕셔너리
+            smartblock_keywords = {}  # 스마트블럭 키워드와 연관 키워드를 저장할 딕셔너리
             
             # 실시간 결과 표시를 위한 placeholder
             result_placeholder = st.empty()
@@ -113,22 +172,35 @@ if st.button("검색 시작"):
 
                 try:
                     keyword_type = ''
+                    is_knowledge_snippet = False
+                    is_smartblock = False
 
                     # 지식스니펫 확인
                     try:
                         knowledge_snippet = driver.find_element(By.CSS_SELECTOR, '.source_box .txt.elss')
-                        keyword_type = 'knowledge_snippet'
+                        is_knowledge_snippet = True
                     except:
                         pass
 
                     # 스마트블럭 확인
-                    if not keyword_type:
-                        soup = BeautifulSoup(driver.page_source, 'html.parser')
-                        try:
-                            smartblock_research = soup.select_one('.BZppu7wV32H2scXPRUVx.fds-info-inner-text')
-                            keyword_type = 'smartblock'
-                        except:
-                            pass
+                    try:
+                        smartblock_research = driver.find_element(By.CSS_SELECTOR, '.BZppu7wV32H2scXPRUVx.fds-info-inner-text')
+                        is_smartblock = True
+                    except:
+                        pass
+
+                    # 키워드 유형 결정
+                    if is_knowledge_snippet and is_smartblock:
+                        keyword_type = 'both'
+                    elif is_knowledge_snippet:
+                        keyword_type = 'knowledge_snippet'
+                    elif is_smartblock:
+                        keyword_type = 'smartblock'
+
+                    # 스마트블럭 연관 키워드 추출 (스마트블럭이거나 둘 다인 경우)
+                    if is_smartblock:
+                        related_keywords = driver.find_elements(By.CSS_SELECTOR, '.THdc2aWT6Ffq9q29WTab.fds-comps-keyword-chip-text.PJMOS12GUdMwfrs67QQn')
+                        smartblock_keywords[keyword] = [k.text for k in related_keywords]
 
                     # 키워드 유형 저장
                     keyword_types[keyword] = keyword_type
@@ -159,8 +231,11 @@ if st.button("검색 시작"):
                             if index <= 15:  # 15위까지만 저장
                                 results[index] = extracted_id
 
+                    # 검색량 조회
+                    pc_volume, mobile_volume = get_search_volume(keyword)
+
                     # 결과 리스트에 추가
-                    row = {'키워드': keyword, 'M': '', 'P': ''}
+                    row = {'키워드': keyword, 'M': mobile_volume, 'P': pc_volume}
                     row.update(results)
                     results_list.append(row)
 
@@ -183,8 +258,20 @@ if st.button("검색 시작"):
             # Progress bar 제거
             progress_bar.empty()
 
+            # 스마트블럭 키워드 및 연관 키워드 표시
+            if smartblock_keywords:
+                st.subheader("스마트블럭 키워드 및 연관 키워드")
+                smartblock_data = []
+                for keyword, related_keywords in smartblock_keywords.items():
+                    smartblock_data.append({
+                        "키워드": keyword,
+                        "연관 키워드": ", ".join(related_keywords)
+                    })
+                smartblock_df = pd.DataFrame(smartblock_data)
+                st.dataframe(smartblock_df, width=1000)
+
             # 엑셀 다운로드 버튼
-            excel_data = create_excel(df, keyword_types)
+            excel_data = create_excel(df, keyword_types, smartblock_keywords)
             st.download_button(
                 label="엑셀 다운로드",
                 data=excel_data,
@@ -192,4 +279,4 @@ if st.button("검색 시작"):
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             )
 
-st.info("'검색 시작' 버튼을 클릭하여 검색 결과를 분석하세요.")
+st.info("'순위 확인' 버튼을 클릭해서 검색 결과를 확인하세요.")
