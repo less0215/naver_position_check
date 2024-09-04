@@ -16,9 +16,14 @@ import hashlib
 import hmac
 import base64
 
+st.set_page_config(
+    page_title="법무법인 동주 SEO",
+    layout='wide'
+)
+
 # Naver API 관련 함수 및 설정
 BASE_URL = 'https://api.naver.com'
-API_KEY = 'api_key'
+API_KEY = 'API_KEY'
 SECRET_KEY = 'SECRET_KEY'
 CUSTOMER_ID = 'CUSTOMER_ID'
 
@@ -59,26 +64,7 @@ def get_search_volume(keyword):
     else:
         return 0, 0
 
-# Streamlit 앱 제목
-st.title("네이버 순위 체크 및 검색량 조회")
-
-# 팀 선택
-selected_team = st.selectbox("팀 선택", ["청소년팀", "형사팀"])
-
-# 키워드 입력
-keywords = st.text_area("키워드를 입력해 주세요 (한 줄에 하나씩)", height=200)
-
-# 청소년팀 ID 리스트
-dongju_id_list = [
-    "designersiun", "singsong0514", "phoenixjeong", "hamas3000", "roses777",
-    "dongjulaw1", "dongjulaw2", "dongjusuwon1", "dongjulaw6", "dj_ehdwn1",
-    "rudnfdldi00", "ehtlarhdwn", "widance", "yellowoi", "dongjulaw",
-    "tale1396", "dongjulaw5", "dongjulaw100", "dongjulaw4", "dongjulaw02",
-    "dksro018", "cckjjt", "qusghtkehdwn", "dongjulaw7", "ujm159",
-    "dong-ju-law", "dongjulaw3", "ehdwnfh", "kkobugi39"
-]
-
-# 결과를 실시간으로 표시하기 위한 함수
+# 색상 적용 함수
 def color_keyword(val, keyword_types, keyword):
     keyword_type = keyword_types.get(keyword, '')
     if keyword_type == 'knowledge_snippet':
@@ -136,147 +122,174 @@ def create_excel(df, keyword_types, smartblock_keywords):
     workbook.save(output)
     return output.getvalue()
 
-# 순위 확인 버튼
-if st.button("순위 확인"):
-    if not keywords:
-        st.error("키워드를 입력해주세요.")
-    else:
-        # 키워드 리스트 생성
-        keyword_list = [keyword.strip() for keyword in keywords.split('\n') if keyword.strip()]
-        
-        if not keyword_list:
-            st.error("유효한 키워드를 입력해주세요.")
+# 사이드탭 생성
+selected_tab = st.sidebar.radio("검색 엔진 선택", ["네이버", "구글"])
+
+if selected_tab == "네이버":
+    # 네이버 탭 내용
+    st.title("네이버 순위 체크 및 검색량 조회")
+
+    # 팀 선택
+    selected_team = st.selectbox("팀 선택", ["청소년팀", "형사팀"])
+
+    # 키워드 입력
+    keywords = st.text_area("키워드를 입력해 주세요 (한 줄에 하나씩)", height=200)
+
+    # 청소년팀 ID 리스트
+    dongju_id_list = [
+        "designersiun", "singsong0514", "phoenixjeong", "hamas3000", "roses777",
+        "dongjulaw1", "dongjulaw2", "dongjusuwon1", "dongjulaw6", "dj_ehdwn1",
+        "rudnfdldi00", "ehtlarhdwn", "widance", "yellowoi", "dongjulaw",
+        "tale1396", "dongjulaw5", "dongjulaw100", "dongjulaw4", "dongjulaw02",
+        "dksro018", "cckjjt", "qusghtkehdwn", "dongjulaw7", "ujm159",
+        "dong-ju-law", "dongjulaw3", "ehdwnfh", "kkobugi39"
+    ]
+
+
+    # 순위 확인 버튼
+    if st.button("순위 확인"):
+        if not keywords:
+            st.error("키워드를 입력해주세요.")
         else:
-            # Chrome 옵션 설정
-            chrome_options = Options()
-            chrome_options.add_argument("--headless")  # 헤드리스 모드
-
-            # WebDriver 초기화
-            driver = webdriver.Chrome(options=chrome_options)
-
-            # 결과를 저장할 리스트 초기화
-            results_list = []
-            keyword_types = {}  # 키워드 유형을 저장할 딕셔너리
-            smartblock_keywords = {}  # 스마트블럭 키워드와 연관 키워드를 저장할 딕셔너리
+            # 키워드 리스트 생성
+            keyword_list = [keyword.strip() for keyword in keywords.split('\n') if keyword.strip()]
             
-            # 실시간 결과 표시를 위한 placeholder
-            result_placeholder = st.empty()
+            if not keyword_list:
+                st.error("유효한 키워드를 입력해주세요.")
+            else:
+                # Chrome 옵션 설정
+                chrome_options = Options()
+                chrome_options.add_argument("--headless")  # 헤드리스 모드
 
-            # 진행 상황 표시를 위한 progress bar
-            progress_bar = st.progress(0)
+                # WebDriver 초기화
+                driver = webdriver.Chrome(options=chrome_options)
 
-            # 각 키워드에 대해 검색 수행
-            for i, keyword in enumerate(keyword_list):
-                # 검색 페이지로 이동
-                driver.get(f"https://search.naver.com/search.naver?ssc=tab.nx.all&where=nexearch&sm=tab_jum&query={keyword}")
+                # 결과를 저장할 리스트 초기화
+                results_list = []
+                keyword_types = {}  # 키워드 유형을 저장할 딕셔너리
+                smartblock_keywords = {}  # 스마트블럭 키워드와 연관 키워드를 저장할 딕셔너리
+                
+                # 실시간 결과 표시를 위한 placeholder
+                result_placeholder = st.empty()
 
-                try:
-                    keyword_type = ''
-                    is_knowledge_snippet = False
-                    is_smartblock = False
+                # 진행 상황 표시를 위한 progress bar
+                progress_bar = st.progress(0)
 
-                    # 지식스니펫 확인
+                # 각 키워드에 대해 검색 수행
+                for i, keyword in enumerate(keyword_list):
+                    # 검색 페이지로 이동
+                    driver.get(f"https://search.naver.com/search.naver?ssc=tab.nx.all&where=nexearch&sm=tab_jum&query={keyword}")
+
                     try:
-                        knowledge_snippet = driver.find_element(By.CSS_SELECTOR, '.source_box .txt.elss')
-                        is_knowledge_snippet = True
-                    except:
-                        pass
+                        keyword_type = ''
+                        is_knowledge_snippet = False
+                        is_smartblock = False
 
-                    # 스마트블럭 확인
-                    try:
-                        smartblock_research = driver.find_element(By.CSS_SELECTOR, '.BZppu7wV32H2scXPRUVx.fds-info-inner-text')
-                        is_smartblock = True
-                    except:
-                        pass
+                        # 지식스니펫 확인
+                        try:
+                            knowledge_snippet = driver.find_element(By.CSS_SELECTOR, '.source_box .txt.elss')
+                            is_knowledge_snippet = True
+                        except:
+                            pass
 
-                    # 키워드 유형 결정
-                    if is_knowledge_snippet and is_smartblock:
-                        keyword_type = 'both'
-                    elif is_knowledge_snippet:
-                        keyword_type = 'knowledge_snippet'
-                    elif is_smartblock:
-                        keyword_type = 'smartblock'
+                        # 스마트블럭 확인
+                        try:
+                            smartblock_research = driver.find_element(By.CSS_SELECTOR, '.BZppu7wV32H2scXPRUVx.fds-info-inner-text')
+                            is_smartblock = True
+                        except:
+                            pass
 
-                    # 스마트블럭 연관 키워드 추출 (스마트블럭이거나 둘 다인 경우)
-                    if is_smartblock:
-                        related_keywords = driver.find_elements(By.CSS_SELECTOR, '.THdc2aWT6Ffq9q29WTab.fds-comps-keyword-chip-text.PJMOS12GUdMwfrs67QQn')
-                        smartblock_keywords[keyword] = [k.text for k in related_keywords]
+                        # 키워드 유형 결정
+                        if is_knowledge_snippet and is_smartblock:
+                            keyword_type = 'both'
+                        elif is_knowledge_snippet:
+                            keyword_type = 'knowledge_snippet'
+                        elif is_smartblock:
+                            keyword_type = 'smartblock'
 
-                    # 키워드 유형 저장
-                    keyword_types[keyword] = keyword_type
+                        # 스마트블럭 연관 키워드 추출 (스마트블럭이거나 둘 다인 경우)
+                        if is_smartblock:
+                            related_keywords = driver.find_elements(By.CSS_SELECTOR, '.THdc2aWT6Ffq9q29WTab.fds-comps-keyword-chip-text.PJMOS12GUdMwfrs67QQn')
+                            smartblock_keywords[keyword] = [k.text for k in related_keywords]
 
-                    # 블로그 탭 클릭
-                    WebDriverWait(driver, 10).until(
-                        EC.element_to_be_clickable((By.CSS_SELECTOR, '.flick_bx:nth-of-type(3) > a'))
-                    ).click()
-                    
-                    # 무한스크롤 처리
-                    last_height = driver.execute_script("return document.body.scrollHeight")
-                    while True:
-                        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-                        time.sleep(random.uniform(1, 1.5))
-                        new_height = driver.execute_script("return document.body.scrollHeight")
-                        if new_height == last_height:
-                            break
-                        last_height = new_height
+                        # 키워드 유형 저장
+                        keyword_types[keyword] = keyword_type
 
-                    # 블로그 순위 체크
-                    blog_ids = driver.find_elements(By.CSS_SELECTOR, '.user_info a')
-                    results = {j: '' for j in range(1, 16)}  # 모든 순위를 빈 문자열로 초기화
-                    for blog_id in blog_ids:
-                        href = blog_id.get_attribute('href')
-                        extracted_id = href.split('/')[-1]
-                        if extracted_id in dongju_id_list:
-                            index = dongju_id_list.index(extracted_id) + 1
-                            if index <= 15:  # 15위까지만 저장
-                                results[index] = extracted_id
+                        # 블로그 탭 클릭
+                        WebDriverWait(driver, 10).until(
+                            EC.element_to_be_clickable((By.CSS_SELECTOR, '.flick_bx:nth-of-type(3) > a'))
+                        ).click()
+                        
+                        # 무한스크롤 처리
+                        last_height = driver.execute_script("return document.body.scrollHeight")
+                        while True:
+                            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+                            time.sleep(random.uniform(1, 1.5))
+                            new_height = driver.execute_script("return document.body.scrollHeight")
+                            if new_height == last_height:
+                                break
+                            last_height = new_height
 
-                    # 검색량 조회
-                    pc_volume, mobile_volume = get_search_volume(keyword)
+                        # 블로그 순위 체크
+                        blog_ids = driver.find_elements(By.CSS_SELECTOR, '.user_info a')
+                        results = {j: '' for j in range(1, 16)}  # 모든 순위를 빈 문자열로 초기화
+                        for blog_id in blog_ids:
+                            href = blog_id.get_attribute('href')
+                            extracted_id = href.split('/')[-1]
+                            if extracted_id in dongju_id_list:
+                                index = dongju_id_list.index(extracted_id) + 1
+                                if index <= 15:  # 15위까지만 저장
+                                    results[index] = extracted_id
 
-                    # 결과 리스트에 추가
-                    row = {'키워드': keyword, 'M': mobile_volume, 'P': pc_volume}
-                    row.update(results)
-                    results_list.append(row)
+                        # 검색량 조회
+                        pc_volume, mobile_volume = get_search_volume(keyword)
 
-                    # 실시간으로 결과 표시
-                    df = pd.DataFrame(results_list)
-                    
-                    # 키워드 열에만 배경색 적용
-                    styled_df = df.style.apply(lambda row: [color_keyword(val, keyword_types, row['키워드']) if idx == 0 else '' for idx, val in enumerate(row)], axis=1)
-                    
-                    result_placeholder.dataframe(styled_df, width=1000)  # 너비 조정
+                        # 결과 리스트에 추가
+                        row = {'키워드': keyword, 'M': mobile_volume, 'P': pc_volume}
+                        row.update(results)
+                        results_list.append(row)
 
-                    # 진행 상황 업데이트
-                    progress_bar.progress((i + 1) / len(keyword_list))
+                        # 실시간으로 결과 표시
+                        df = pd.DataFrame(results_list)
+                        
+                        # 키워드 열에만 배경색 적용
+                        styled_df = df.style.apply(lambda row: [color_keyword(val, keyword_types, row['키워드']) if idx == 0 else '' for idx, val in enumerate(row)], axis=1)
+                        
+                        result_placeholder.dataframe(styled_df, width=1000)  # 너비 조정
 
-                except Exception as e:
-                    st.error(f"키워드 '{keyword}' 검색 중 오류 발생: {str(e)}")
+                        # 진행 상황 업데이트
+                        progress_bar.progress((i + 1) / len(keyword_list))
 
-            driver.quit()
+                    except Exception as e:
+                        st.error(f"키워드 '{keyword}' 검색 중 오류 발생: {str(e)}")
 
-            # Progress bar 제거
-            progress_bar.empty()
+                driver.quit()
 
-            # 스마트블럭 키워드 및 연관 키워드 표시
-            if smartblock_keywords:
-                st.subheader("스마트블럭 키워드 및 연관 키워드")
-                smartblock_data = []
-                for keyword, related_keywords in smartblock_keywords.items():
-                    smartblock_data.append({
-                        "키워드": keyword,
-                        "연관 키워드": ", ".join(related_keywords)
-                    })
-                smartblock_df = pd.DataFrame(smartblock_data)
-                st.dataframe(smartblock_df, width=1000)
+                # Progress bar 제거
+                progress_bar.empty()
 
-            # 엑셀 다운로드 버튼
-            excel_data = create_excel(df, keyword_types, smartblock_keywords)
-            st.download_button(
-                label="엑셀 다운로드",
-                data=excel_data,
-                file_name="search_results.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            )
+                # 스마트블럭 키워드 및 연관 키워드 표시
+                if smartblock_keywords:
+                    st.subheader("스마트블럭 키워드 및 연관 키워드")
+                    smartblock_data = []
+                    for keyword, related_keywords in smartblock_keywords.items():
+                        smartblock_data.append({
+                            "키워드": keyword,
+                            "연관 키워드": ", ".join(related_keywords)
+                        })
+                    smartblock_df = pd.DataFrame(smartblock_data)
+                    st.dataframe(smartblock_df, width=1000)
 
-st.info("'순위 확인' 버튼을 클릭해서 검색 결과를 확인하세요.")
+                # 엑셀 다운로드 버튼
+                excel_data = create_excel(df, keyword_types, smartblock_keywords)
+                st.download_button(
+                    label="엑셀 다운로드",
+                    data=excel_data,
+                    file_name="search_results.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
+    st.info("'순위 확인' 버튼을 클릭해서 검색 결과를 확인하세요.")
+
+elif selected_tab == "구글":
+    st.title("구글 순위 체크")
+    st.write("준비중...")
